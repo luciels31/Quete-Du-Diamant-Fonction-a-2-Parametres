@@ -1,83 +1,75 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from sympy import symbols, diff, lambdify
-from scipy.optimize import minimize
 
-# Set page configuration
-st.set_page_config(page_title="Étude de fonctions à deux variables", layout="wide")
+# Titre de l'application
+st.title("Étude et visualisation des fonctions réelles à deux paramètres")
 
-# Title and description
-st.title("Étude et Visualisation de Fonctions à Deux Variables")
-st.markdown(
-    """Bienvenue dans cette application ! Vous pouvez entrer une fonction de deux variables (x, y), spécifier les bornes, 
-    et visualiser ses propriétés. Vous obtiendrez également les extrema locaux et globaux.
-    """
+# Description
+st.write(
+    "Cette application permet de visualiser et d'étudier des fonctions réelles \(f(x, y)\) "
+    "en fournissant des graphiques et une analyse mathématique (extrema, dérivées, etc.)."
 )
 
-# Input fields for function and ranges
-function_input = st.text_input("Entrez une fonction en x et y (ex: x**2 + y**2 - x*y)", "x**2 + y**2")
-x_min = st.number_input("Borne inférieure pour x", value=-10.0)
-x_max = st.number_input("Borne supérieure pour x", value=10.0)
-y_min = st.number_input("Borne inférieure pour y", value=-10.0)
-y_max = st.number_input("Borne supérieure pour y", value=10.0)
+# Sélection de la fonction
+fonction_str = st.selectbox(
+    "Choisissez une fonction à étudier :",
+    ["x**2 + y**2", "sin(x) * cos(y)", "exp(-x**2 - y**2)"]
+)
 
-# Parse the input function
-x, y = symbols("x y")
-try:
-    function = eval(function_input)
-    f_lambdified = lambdify((x, y), function, "numpy")
-except Exception as e:
-    st.error(f"Erreur lors de l'analyse de la fonction : {e}")
-    st.stop()
+# Variables symboliques pour l'analyse mathématique
+x, y = symbols('x y')
+fonction = eval(fonction_str)
 
-# Create meshgrid
+# Calcul des dérivées partielles
+df_dx = diff(fonction, x)
+df_dy = diff(fonction, y)
+
+# Points critiques : Résolution des équations df/dx = 0 et df/dy = 0
+crit_points = st.checkbox("Afficher les points critiques ?")
+if crit_points:
+    st.write("Calcul des points critiques...")
+    from sympy.solvers import solve
+    solutions = solve([df_dx, df_dy], (x, y))
+    st.write(f"Points critiques : {solutions}")
+
+# Définition des bornes pour x et y
+x_min = st.slider("x minimum", -10, 0, -5)
+x_max = st.slider("x maximum", 0, 10, 5)
+y_min = st.slider("y minimum", -10, 0, -5)
+y_max = st.slider("y maximum", 0, 10, 5)
+
+# Génération des données pour x et y
 x_vals = np.linspace(x_min, x_max, 100)
 y_vals = np.linspace(y_min, y_max, 100)
 X, Y = np.meshgrid(x_vals, y_vals)
-Z = f_lambdified(X, Y)
 
-# Plotting 3D surface
+# Conversion de la fonction en fonction numérique
+fonction_numeric = lambdify((x, y), fonction)
+Z = fonction_numeric(X, Y)
+
+# Tracé du graphique 3D
 fig = plt.figure(figsize=(10, 6))
 ax = fig.add_subplot(111, projection="3d")
-ax.plot_surface(X, Y, Z, cmap="viridis", edgecolor="none")
-ax.set_title("Surface de la fonction")
+surf = ax.plot_surface(X, Y, Z, cmap="viridis", edgecolor="k", alpha=0.8)
 ax.set_xlabel("x")
 ax.set_ylabel("y")
 ax.set_zlabel("f(x, y)")
+ax.set_title(f"Graphique de {fonction_str}")
+fig.colorbar(surf, ax=ax, shrink=0.5, aspect=10)
+
+# Affichage dans Streamlit
 st.pyplot(fig)
 
-# Plotting contour
-fig2, ax2 = plt.subplots(figsize=(8, 6))
-contour = ax2.contourf(X, Y, Z, cmap="viridis")
-plt.colorbar(contour)
-ax2.set_title("Courbes de niveau de la fonction")
-ax2.set_xlabel("x")
-ax2.set_ylabel("y")
-st.pyplot(fig2)
+# Analyse mathématique
+st.header("Analyse mathématique")
+st.write(f"Fonction choisie : \( f(x, y) = {fonction_str} \)")
+st.write("### Dérivées partielles :")
+st.latex(f"\\frac{{\\partial f}}{{\\partial x}} = {df_dx}")
+st.latex(f"\\frac{{\\partial f}}{{\\partial y}} = {df_dy}")
 
-# Extrema calculation
-def find_extrema(f, bounds):
-    def f_numpy(coords):
-        return f(coords[0], coords[1])
-
-    x_bounds, y_bounds = bounds
-    results = []
-    for x0 in np.linspace(x_bounds[0], x_bounds[1], 10):
-        for y0 in np.linspace(y_bounds[0], y_bounds[1], 10):
-            res = minimize(f_numpy, [x0, y0], bounds=[x_bounds, y_bounds])
-            if res.success:
-                results.append((res.fun, res.x))
-    return results
-
-try:
-    bounds = [(x_min, x_max), (y_min, y_max)]
-    extrema = find_extrema(f_lambdified, bounds)
-    extrema_sorted = sorted(extrema, key=lambda x: x[0])
-
-    st.subheader("Extrema trouvés")
-    for i, (value, coords) in enumerate(extrema_sorted[:5]):
-        st.write(f"Extremum {i + 1} : f({coords[0]:.3f}, {coords[1]:.3f}) = {value:.3f}")
-except Exception as e:
-    st.error(f"Erreur lors du calcul des extrema : {e}")
+if crit_points:
+    st.write("### Points critiques :")
+    for point in solutions:
+        st.write(f"Point critique : {point}")
