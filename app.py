@@ -1,99 +1,79 @@
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
-from sympy import symbols, diff, lambdify, sin, cos, exp
-from sympy.solvers import solve
+import plotly.graph_objects as go
+from sympy import symbols, diff, solve, sin, cos, exp, lambdify
 
-# Titre de l'application
-st.title("Étude et visualisation des fonctions réelles à deux paramètres")
+# Définition des symboles
+x, y = symbols('x y')
 
-# Description
-st.write(
-    "Cette application permet de visualiser et d'étudier des fonctions réelles \(f(x, y)\) "
-    "en fournissant des graphiques et une analyse mathématique (extrema, dérivées, etc.)."
-)
+# Dictionnaire des fonctions autorisées pour l'évaluation sécurisée
+allowed_functions = {
+    "sin": sin,
+    "cos": cos,
+    "exp": exp,
+    "x": x,
+    "y": y
+}
+
+# Interface utilisateur
+st.title("Étude et visualisation de fonctions à deux variables")
 
 # Sélection de la fonction
-fonction_str = st.selectbox(
-    "Choisissez une fonction à étudier :",
-    ["x**2 + y**2", "sin(x) * cos(y)", "exp(-x**2 - y**2)"]
-)
+options = {
+    "x² + y²": x**2 + y**2,
+    "sin(x) * cos(y)": sin(x) * cos(y),
+    "exp(-x² - y²)": exp(-x**2 - y**2),
+    "Entrer une fonction personnalisée": None
+}
 
-# Définir un contexte sûr pour `eval`
-safe_dict = {"x": symbols("x"), "y": symbols("y"), "sin": sin, "cos": cos, "exp": exp}
-x, y = safe_dict["x"], safe_dict["y"]
+fonction_choisie = st.selectbox("Choisissez une fonction prédéfinie ou entrez la vôtre :", list(options.keys()))
 
-try:
-    fonction = eval(fonction_str, {"__builtins__": None}, safe_dict)
-except Exception as e:
-    st.error(f"Erreur lors de l'interprétation de la fonction : {e}")
-    st.stop()
+# Gestion de la fonction personnalisée
+if fonction_choisie == "Entrer une fonction personnalisée":
+    fonction_str = st.text_input("Entrez votre fonction en termes de x et y :", "x**2 + y**2")
+    try:
+        fonction = eval(fonction_str, {"__builtins__": None}, allowed_functions)
+    except Exception as e:
+        st.error(f"Erreur dans la définition de la fonction : {e}")
+        st.stop()
+else:
+    fonction = options[fonction_choisie]
 
 # Calcul des dérivées partielles
 df_dx = diff(fonction, x)
 df_dy = diff(fonction, y)
 
-# Points critiques : Résolution des équations df/dx = 0 et df/dy = 0
-crit_points = st.checkbox("Afficher les points critiques ?")
-if crit_points:
-    st.write("### Points critiques :")
-    try:
-        # Résolution
-        solutions = solve([df_dx, df_dy], (x, y), dict=True)
-        st.write(f"Solutions brutes (pour débogage) : {solutions}")
+# Calcul des points critiques
+solutions = solve([df_dx, df_dy], (x, y), dict=True)
 
-        if solutions:
-            for point in solutions:
-                # Vérification des types et évaluation
-                x_val = point.get(x, None)
-                y_val = point.get(y, None)
+# Affichage de la fonction
+st.write("### Fonction sélectionnée :")
+st.latex(f"f(x, y) = {fonction}")
 
-                # Évaluation numérique si possible
-                if x_val is not None and y_val is not None:
-                    try:
-                        x_val = x_val.evalf() if hasattr(x_val, "evalf") else x_val
-                        y_val = y_val.evalf() if hasattr(y_val, "evalf") else y_val
-                        st.write(f"Point critique : (x = {x_val}, y = {y_val})")
-                    except Exception as eval_error:
-                        st.error(f"Erreur lors de l'évaluation du point critique : {eval_error}")
-                else:
-                    st.error("Impossible d'évaluer un ou plusieurs points critiques.")
-        else:
-            st.write("Aucun point critique trouvé.")
-    except Exception as solve_error:
-        st.error(f"Erreur lors du calcul des points critiques : {solve_error}")
+# Affichage des points critiques
+st.write("### Points critiques :")
+if solutions:
+    for i, point in enumerate(solutions):
+        x_val = point[x].evalf()
+        y_val = point[y].evalf()
+        st.write(f"Point critique {i + 1} : (x = {x_val}, y = {y_val})")
+else:
+    st.write("Aucun point critique trouvé.")
 
-# Définition des bornes pour x et y
-x_min = st.slider("x minimum", -10, 0, -5)
-x_max = st.slider("x maximum", 0, 10, 5)
-y_min = st.slider("y minimum", -10, 0, -5)
-y_max = st.slider("y maximum", 0, 10, 5)
+# Création du graphique interactif avec Plotly
+st.write("### Visualisation interactive de la fonction")
 
-# Génération des données pour x et y
-x_vals = np.linspace(x_min, x_max, 100)
-y_vals = np.linspace(y_min, y_max, 100)
+# Génération des données pour le graphique
+x_vals = np.linspace(-5, 5, 100)
+y_vals = np.linspace(-5, 5, 100)
 X, Y = np.meshgrid(x_vals, y_vals)
 
-# Conversion de la fonction en fonction numérique
-fonction_numeric = lambdify((x, y), fonction, "numpy")
+# Transformation de la fonction en fonction numérique utilisable
+fonction_numeric = lambdify((x, y), fonction, modules=["numpy"])
 Z = fonction_numeric(X, Y)
 
-# Tracé du graphique 3D
-fig = plt.figure(figsize=(10, 6))
-ax = fig.add_subplot(111, projection="3d")
-surf = ax.plot_surface(X, Y, Z, cmap="viridis", edgecolor="k", alpha=0.8)
-ax.set_xlabel("x")
-ax.set_ylabel("y")
-ax.set_zlabel("f(x, y)")
-ax.set_title(f"Graphique de {fonction_str}")
-fig.colorbar(surf, ax=ax, shrink=0.5, aspect=10)
+# Création du graphique Plotly
+fig = go.Figure(data=[go.Surface(z=Z, x=X, y=Y, colorscale="viridis")])
+fig.update_layout(title="Représentation 3D de f(x, y)", scene=dict(xaxis_title='x', yaxis_title='y', zaxis_title='f(x, y)'))
 
-# Affichage dans Streamlit
-st.pyplot(fig)
-
-# Analyse mathématique
-st.header("Analyse mathématique")
-st.write(f"Fonction choisie : \( f(x, y) = {fonction_str} \)")
-st.write("### Dérivées partielles :")
-st.latex(f"\\frac{{\\partial f}}{{\\partial x}} = {df_dx}")
-st.latex(f"\\frac{{\\partial f}}{{\\partial y}} = {df_dy}")
+st.plotly_chart(fig)
